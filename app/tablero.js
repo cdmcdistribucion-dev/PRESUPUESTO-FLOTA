@@ -242,78 +242,7 @@ function renderOLTable(){
 function openModal(inner){$('modalRoot').innerHTML='<div class="ov" id="ov"><div class="modal" role="dialog" aria-modal="true">'+inner+'</div></div>';$('ov').addEventListener('mousedown',function(e){if(e.target.id==='ov')closeModal();});document.addEventListener('keydown',escClose);}
 function escClose(e){if(e.key==='Escape')closeModal();}
 function closeModal(){$('modalRoot').innerHTML='';document.removeEventListener('keydown',escClose);}
-function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){}return null;}
-function repoInfo(){
-  var m=/^([^.]+)\.github\.io$/i.exec(location.hostname);
-  if(m){var rp=location.pathname.split('/')[1];if(rp)return m[1]+'/'+rp;}
-  return ls('mc_repo')||'';
-}
-function b64Text(str){return btoa(unescape(encodeURIComponent(str)));}
-function b64Buf(buf){var u=new Uint8Array(buf),s='',i,n=0x8000;for(i=0;i<u.length;i+=n)s+=String.fromCharCode.apply(null,u.subarray(i,i+n));return btoa(s);}
-async function ghPut(repo,branch,token,path,contentB64,msg){
-  var base='https://api.github.com/repos/'+repo+'/contents/'+path.split('/').map(encodeURIComponent).join('/');
-  var H={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'};
-  var sha=null,g=await fetch(base+'?ref='+encodeURIComponent(branch),{headers:H,cache:'no-store'});
-  if(g.ok){sha=(await g.json()).sha;}
-  else if(g.status!==404)throw ghError(g.status,repo);
-  var body={message:msg,content:contentB64,branch:branch};if(sha)body.sha=sha;
-  var p=await fetch(base,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},H),body:JSON.stringify(body)});
-  if(!p.ok)throw ghError(p.status,repo);
-}
-function ghError(st,repo){
-  var m={401:'El token no es válido o venció.',403:'El token no tiene permiso de escritura (Contents: Read and write) sobre '+repo+'.',404:'No se encontró el repositorio "'+repo+'" o la rama, o el token no tiene acceso a él.',409:'Conflicto: alguien publicó al mismo tiempo. Probá de nuevo.',422:'GitHub rechazó el archivo (revisá el nombre de la rama).'};
-  return new Error(m[st]||('Error de GitHub (HTTP '+st+').'));
-}
-async function readPicked(files){
-  var m=clone(model),notes=[],ok=[];
-  for(var i=0;i<files.length;i++){
-    var f=files[i];
-    try{
-      var buf=await f.arrayBuffer(),r=XL.parseWorkbook(await XL.readXlsx(buf),{year:2026});
-      if(!r.kind){notes.push(f.name+': formato no reconocido');continue;}
-      var ols=r.ols;
-      if(r.needsOL){var ol=XL.guessOL(f.name);if(!ol||OLS.indexOf(ol)<0){notes.push(f.name+': no se sabe de qué operador es (poné RDV, TL, TOL o ST en el nombre)');continue;}ols={};ols[ol]=r.single;}
-      var st=XL.applyImport(m,ols);ok.push({file:f,buf:buf,cells:st.cells,ols:Object.keys(ols)});
-      (r.warnings||[]).forEach(function(w){notes.push(f.name+': '+w);});
-    }catch(e){notes.push(f.name+': '+(e.message||e));}
-  }
-  return {model:m,ok:ok,notes:notes};
-}
-function showPublish(){
-  var tk=ls('mc_token')||'',br=ls('mc_branch')||'main';
-  openModal('<header><h2>Publicar datos en GitHub</h2></header><div class="body">'+
-    '<label class="fld" for="gRepo">Repositorio (usuario/nombre)</label><input class="txt" id="gRepo" value="'+esc(repoInfo())+'" placeholder="ej. cdmcdistribucion-dev/PRESUPUESTO-FLOTA" autocomplete="off">'+
-    '<label class="fld" for="gTok">Token de GitHub</label><input class="txt" id="gTok" type="password" value="'+esc(tk)+'" placeholder="github_pat_…" autocomplete="off">'+
-    '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--mut)"><input type="checkbox" id="gRem" '+(tk?'checked':'')+'> Recordar el token en este navegador (no se guarda en el repositorio)</label>'+
-    '<label class="fld" for="gBr">Rama</label><input class="txt" id="gBr" value="'+esc(br)+'" autocomplete="off">'+
-    '<label class="fld" for="gFiles">Excel actualizados (uno o varios)</label><input class="txt" id="gFiles" type="file" accept=".xlsx" multiple>'+
-    '<div id="pbMsg" style="margin-top:12px"></div></div>'+
-    '<footer><button class="btn" type="button" id="pbNo">Cerrar</button><button class="btn gold" type="button" id="pbGo">Publicar</button></footer>');
-  $('pbNo').onclick=closeModal;
-  function msg(h,cls){$('pbMsg').innerHTML='<div class="alert '+(cls||'info')+'">'+h+'</div>';}
-  $('pbGo').onclick=async function(){
-    var repo=$('gRepo').value.trim().replace(/^https?:\/\/github\.com\//i,'').replace(/\.git$/,'').replace(/\/$/,''),token=$('gTok').value.trim(),branch=$('gBr').value.trim()||'main',files=Array.prototype.slice.call($('gFiles').files);
-    if(!/^[^\/\s]+\/[^\/\s]+$/.test(repo)){msg('Escribí el repositorio como <b>usuario/nombre</b>.','err');return;}
-    if(!token){msg('Pegá el token de GitHub.','err');return;}
-    if(!files.length){msg('Elegí al menos un Excel.','err');return;}
-    $('pbGo').disabled=true;
-    try{
-      msg('Leyendo los Excel…');
-      var rd=await readPicked(files);
-      if(!rd.ok.length)throw new Error('Ningún archivo se pudo leer. '+rd.notes.join(' · '));
-      rd.model.meta={savedAt:new Date().toISOString(),savedBy:'Publicado desde el tablero',version:((model.meta&&model.meta.version)||0)+1,files:rd.ok.map(function(x){return x.file.name;})};
-      var when=new Date().toLocaleString('es-AR');
-      msg('Subiendo datos a GitHub…');
-      await ghPut(repo,branch,token,'datos/datos_presupuesto.json',b64Text(JSON.stringify(rd.model)),'Actualización de datos '+when);
-      for(var i=0;i<rd.ok.length;i++){msg('Subiendo '+esc(rd.ok[i].file.name)+'…');await ghPut(repo,branch,token,'base_excels/'+rd.ok[i].file.name,b64Buf(rd.ok[i].buf),'Excel '+rd.ok[i].file.name+' · '+when);}
-      ls('mc_repo',repo);ls('mc_branch',branch);ls('mc_token',$('gRem').checked?token:null);
-      model=rd.model;info={ok:true,msg:'Publicado ahora',when:rd.model.meta.savedAt};cut=defaultCut();render();
-      msg('<b>Listo.</b> Se publicaron '+rd.ok.length+' archivo(s). En 1–2 minutos el link del tablero muestra los datos nuevos (después tocá <b>Actualizar datos</b>).'+(rd.notes.length?'<br>Avisos: '+esc(rd.notes.join(' · ')):''));
-    }catch(e){msg('<b>No se pudo publicar.</b> '+esc(e.message||String(e)),'err');}
-    $('pbGo').disabled=false;
-  };
-}
-$('btnPublish').onclick=showPublish;
+
 
 /* ---------- tema ---------- */
 function applyTheme(t){
