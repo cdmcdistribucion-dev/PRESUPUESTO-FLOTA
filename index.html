@@ -221,7 +221,8 @@ td.tg{line-height:1.25} td.tg small{display:block;margin-top:3px;font-size:10.5p
   <div class="filters">
     <div class="wrap">
       <div class="fgroup"><span class="flabel">Operador</span><div class="chips" id="olChips"></div></div>
-      <div class="fgroup"><span class="flabel">Acumulado hasta</span><select id="cutSel" aria-label="Mes de corte"></select></div>
+      <div class="fgroup"><span class="flabel">Vista</span><div class="seg" id="modeSeg" role="group" aria-label="Vista"><button type="button" data-v="acum" aria-pressed="true">Acumulado</button><button type="button" data-v="mes" aria-pressed="false">Mes</button></div></div>
+      <div class="fgroup"><span class="flabel" id="cutLbl">Hasta</span><select id="cutSel" aria-label="Mes"></select></div>
     </div>
   </div>
 </div>
@@ -264,7 +265,7 @@ td.tg{line-height:1.25} td.tg small{display:block;margin-top:3px;font-size:10.5p
 
   <footer class="page">
     <div class="cols">
-      <div style="opacity:.7">Versión del tablero: 30/10/2026 · v4</div>
+      <div style="opacity:.7">Versión del tablero: 30/10/2026 · v6</div>
       <div><b>Operadores:</b> RDV, TL, TOL y ST. Cualquier otro operador del archivo se omite.</div>
       <div><b>Mantenimiento</b> suma correctivo, preventivo y proactivo. <b>Otros</b> reúne documentación, administrativos, seguros y similares (hoy solo TOL).</div>
       <div><b>Datos:</b> se leen de <b>datos/datos_presupuesto.json</b>, generado desde los Excel de <b>base_excels</b> (hojas Presupuesto, Gastos y Targets). Tras publicar, presioná <b>Actualizar datos</b>.</div>
@@ -724,7 +725,9 @@ var DATA_JSON='datos/datos_presupuesto.json', DATA_URL='datos/Plantilla_Presupue
 
 /* ---------- estado ---------- */
 var model=XL.emptyModel(), info={ok:false,msg:'Cargando datos…',when:null};
-var flt='Todos', cut=5, metric='real';
+var flt='Todos', cut=5, metric='real', mode='acum';
+function lo(){return mode==='mes'?cut:0;}
+function plab(){return mode==='mes'?MESL[cut]:'Enero a '+MESL[cut];}
 
 /* ---------- utilidades ---------- */
 function $(id){return document.getElementById(id);}
@@ -820,6 +823,8 @@ function renderFilters(){
   var c=$('olChips');
   c.innerHTML=['Todos'].concat(OLS).map(function(o){return '<button type="button" class="chip-btn" data-o="'+o+'" aria-pressed="'+(flt===o)+'">'+o+'</button>';}).join('');
   c.querySelectorAll('button').forEach(function(b){b.onclick=function(){flt=b.dataset.o;renderFilters();renderDerived();};});
+  var sg=$('modeSeg');if(sg){sg.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.v===mode));b.onclick=function(){mode=b.dataset.v;renderFilters();renderDerived();};});}
+  var lb=$('cutLbl');if(lb)lb.textContent=mode==='mes'?'Mes':'Hasta';
   var s=$('cutSel');
   s.innerHTML=MESL.map(function(n,i){return '<option value="'+i+'"'+(i===cut?' selected':'')+'>'+n+'</option>';}).join('');
   s.onchange=function(){cut=+s.value;renderDerived();};
@@ -843,13 +848,13 @@ function renderTargets(){
   var TR=Array(ITEMS.length).fill(0),TT=Array(ITEMS.length).fill(0);
   OLS.forEach(function(ol){
     var rr=0,tt=0,cells='';
-    ITEMS.forEach(function(it,i){var r=sumr(model.data[ol].real[it],0,cut),t=sumr(model.data[ol].target[it],0,cut);if(t>0){rr+=r;tt+=t;TR[i]+=r;TT[i]+=t;}cells+=cell(r,t);});
+    ITEMS.forEach(function(it,i){var r=sumr(model.data[ol].real[it],lo(),cut),t=sumr(model.data[ol].target[it],lo(),cut);if(t>0){rr+=r;tt+=t;TR[i]+=r;TT[i]+=t;}cells+=cell(r,t);});
     b+='<tr><td>'+ol+'</td>'+cells+cell(rr,tt)+'</tr>';
   });
   var gr=0,gt=0,cells2='';ITEMS.forEach(function(it,i){gr+=TR[i];gt+=TT[i];cells2+=cell(TR[i],TT[i]);});
   b+='<tr class="tot"><td>Flota</td>'+cells2+cell(gr,gt)+'</tr></tbody>';
   $('tblTarget').innerHTML=head+b;
-  $('tgtNote').textContent='Enero a '+MESL[cut]+' · gasto real acumulado frente al target acumulado (solo ítems con target)'+(any?'.':'. Cargá la hoja "Targets" de la plantilla para ver el cumplimiento.');
+  $('tgtNote').textContent=plab()+' · gasto real frente al target '+(mode==='mes'?'del mes':'acumulado')+' (solo ítems con target)'+(any?'.':'. Cargá la hoja "Targets" de la plantilla para ver el cumplimiento.');
 }
 
 /* Gráficos */
@@ -867,7 +872,8 @@ function chartMonthly(){
   var pp=serTot('presu'),stack=Array(12).fill(0).map(function(_,m){return ITEMS.reduce(function(a,it){return a+real[it][m];},0);});
   var maxV=niceMax(Math.max.apply(null,stack.concat(pp))*1.05),slot=pw/12,bw=slot*0.58,s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Gasto real por ítem y presupuesto total, mes a mes">'+axis(maxV,W,H,pl,pr,pt,pb);
   var cx=pl+slot*(cut+1);
-  if(cut<11)s+='<rect x="'+cx+'" y="'+pt+'" width="'+(W-pr-cx)+'" height="'+ph+'" fill="var(--shade)"/>';
+  if(mode==='mes')s+='<rect x="'+(pl+slot*cut+2)+'" y="'+pt+'" width="'+(slot-4)+'" height="'+ph+'" rx="6" fill="none" stroke="#F6B800" stroke-width="2"/>';
+  if(cut<11&&mode!=='mes')s+='<rect x="'+cx+'" y="'+pt+'" width="'+(W-pr-cx)+'" height="'+ph+'" fill="var(--shade)"/>';
   for(var m=0;m<12;m++){
     var x=pl+slot*m+(slot-bw)/2,y=pt+ph;
     ITEMS.forEach(function(it){var h=real[it][m]/maxV*ph;y-=h;if(h>0)s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+COL[it]+'"/>';});
@@ -888,7 +894,7 @@ function chartMonthly(){
     r.onmouseleave=hideTip;
   });
   $('lgMonthly').innerHTML=ITEMS.map(function(it){return '<span><i style="background:'+COL[it]+'"></i>'+ILAB[it]+'</span>';}).join('')+'<span><i class="ln" style="background:var(--ink)"></i>Presupuesto total</span>';
-  $('monthlySub').textContent='Los meses posteriores a '+MESL[cut]+' se muestran sombreados (aún sin cierre).';
+  $('monthlySub').textContent=mode==='mes'?'Mes seleccionado: '+MESL[cut]+' (marcado en dorado).':'Los meses posteriores a '+MESL[cut]+' se muestran sombreados (aún sin cierre).';
 }
 function chartCum(){
   var W=420,H=340,pl=64,pr=14,pt=14,pb=30,ph=H-pt-pb,pw=W-pl-pr;
@@ -913,30 +919,30 @@ function chartCum(){
   $('lgCum').innerHTML='<span><i class="ln" style="background:#F6B800;height:5px"></i>Gasto real</span><span><i class="ln" style="background:var(--ink)"></i>Presupuesto</span>';
 }
 function olBars(){
-  var rows=OLS.map(function(ol){var r=0,p=0;ITEMS.forEach(function(it){r+=sumr(model.data[ol].real[it],0,cut);p+=sumr(model.data[ol].presu[it],0,cut);});return {ol:ol,r:r,p:p};});
+  var rows=OLS.map(function(ol){var r=0,p=0;ITEMS.forEach(function(it){r+=sumr(model.data[ol].real[it],lo(),cut);p+=sumr(model.data[ol].presu[it],lo(),cut);});return {ol:ol,r:r,p:p};});
   var mx=Math.max.apply(null,rows.map(function(x){return Math.max(x.r,x.p);}).concat([1]));
   $('olBars').innerHTML=rows.map(function(x){
     var dv=x.p?(x.r-x.p)/x.p:null;
     return '<div class="olrow'+(flt===x.ol?' sel':'')+'"><b>'+x.ol+'</b><div class="track" role="img" aria-label="'+x.ol+': gasto real '+compact(x.r)+' de '+compact(x.p)+' presupuestados"><div class="pp" style="width:'+(x.p/mx*100)+'%"></div><div class="rl'+(x.r>x.p?' over':'')+'" style="width:'+(x.r/mx*100)+'%"></div></div><div class="olnums"><span>Real <strong>'+compact(x.r)+'</strong> · Ppto. <strong>'+compact(x.p)+'</strong></span><span class="'+(dv==null?'':dv>0?'bad':'good')+'"><strong>'+(dv==null?'—':(dv>0?'▲ +':'▼ −')+pct(Math.abs(dv)))+'</strong></span></div></div>';
   }).join('');
-  $('olSub').textContent='Enero a '+MESL[cut]+' · la marca clara es el presupuesto acumulado.';
+  $('olSub').textContent=plab()+' · la marca clara es el presupuesto '+(mode==='mes'?'del mes':'acumulado')+'.';
 }
 function mixChart(){
-  var vals=ITEMS.map(function(it){return sumr(ser('real',it),0,cut);}),tot=vals.reduce(function(a,b){return a+b;},0)||1;
+  var vals=ITEMS.map(function(it){return sumr(ser('real',it),lo(),cut);}),tot=vals.reduce(function(a,b){return a+b;},0)||1;
   $('mix').innerHTML='<div class="mixbar" role="img" aria-label="Composición porcentual del gasto real por ítem">'+ITEMS.map(function(it,i){return '<span style="width:'+(vals[i]/tot*100)+'%;background:'+COL[it]+'" title="'+ILAB[it]+'"></span>';}).join('')+'</div>'+
     ITEMS.map(function(it,i){return '<div class="mixrow"><i style="background:'+COL[it]+'"></i><span>'+ILAB[it]+'</span><strong>'+compact(vals[i])+'</strong><em>'+pct(vals[i]/tot)+'</em></div>';}).join('');
-  $('mixSub').textContent='Enero a '+MESL[cut]+' · '+(flt==='Todos'?'los 4 operadores':'operador '+flt);
+  $('mixSub').textContent=plab()+' · '+(flt==='Todos'?'los 4 operadores':'operador '+flt);
 }
 function renderCharts(){chartMonthly();chartCum();olBars();mixChart();}
 
 /* Tablas */
 function setMetric(m){metric=m;document.querySelectorAll('#metricSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.m===m));});renderDetail();}
 function renderDetail(){
-  var head='<thead><tr><th>Ítem</th>'+MES.map(function(m){return '<th>'+m+'</th>';}).join('')+'<th>Acum. '+MES[cut]+'</th><th>Año</th></tr></thead>';
+  var head='<thead><tr><th>Ítem</th>'+MES.map(function(m){return '<th>'+m+'</th>';}).join('')+'<th>'+(mode==='mes'?'Mes ':'Acum. ')+MES[cut]+'</th><th>Año</th></tr></thead>';
   function row(label,color,r,p,isTot,tg){
     var v=metric==='real'?r:metric==='presu'?p:metric==='target'?tg:r.map(function(x,i){return x-p[i];});
     var cells=v.map(function(x,i){var dim=(metric!=='presu'&&metric!=='target'&&i>cut);var cl=(metric==='desv'&&!dim&&x!==0)?(x>0?'bad':'good'):'';return '<td class="'+(dim?'dim ':'')+cl+'">'+(metric==='real'&&dim&&!x?'·':nf0.format(Math.round(x)))+'</td>';}).join('');
-    var ac=sumr(v,0,cut),yr=sumr(v,0,11);
+    var ac=sumr(v,lo(),cut),yr=sumr(v,0,11);
     var cl2=metric==='desv'?(ac>0?'bad':ac<0?'good':''):'';
     return '<tr'+(isTot?' class="tot"':'')+'><td>'+(color?'<span class="sw" style="background:'+color+'"></span>':'')+label+'</td>'+cells+'<td class="'+cl2+'"><b>'+nf0.format(Math.round(ac))+'</b></td><td>'+nf0.format(Math.round(yr))+'</td></tr>';
   }
@@ -946,12 +952,12 @@ function renderDetail(){
   $('tblDetail').innerHTML=head+body;
 }
 function renderOLTable(){
-  var head='<thead><tr><th>Operador</th><th>Ppto. anual</th><th>Ppto. acum. '+MES[cut]+'</th><th>Real acum. '+MES[cut]+'</th><th>Desvío $</th><th>Desvío %</th><th>% del ppto. anual</th><th>Target acum.</th><th>Estado</th></tr></thead>',b='<tbody>',TP=0,TR=0,TY=0,TT=0,TRT=0;
+  var head='<thead><tr><th>Operador</th><th>Ppto. anual</th><th>Ppto. '+(mode==='mes'?'':'acum. ')+MES[cut]+'</th><th>Real '+(mode==='mes'?'':'acum. ')+MES[cut]+'</th><th>Desvío $</th><th>Desvío %</th><th>% del ppto. anual</th><th>Target '+(mode==='mes'?MES[cut]:'acum.')+'</th><th>Estado</th></tr></thead>',b='<tbody>',TP=0,TR=0,TY=0,TT=0,TRT=0;
   function orow(l,y,p,r,tg,t,rt){var d=r-p,dp=p?d/p:null,c=d>0?'bad':d<0?'good':'';return '<tr'+(t?' class="tot"':'')+'><td>'+l+'</td><td>'+money(y)+'</td><td>'+money(p)+'</td><td>'+money(r)+'</td><td class="'+c+'">'+(d>0?'+':d<0?'−':'')+money(Math.abs(d))+'</td><td class="'+c+'">'+(dp==null?'—':(d>0?'+':d<0?'−':'')+pct(Math.abs(dp)))+'</td><td>'+(y?pct(r/y):'—')+'</td><td>'+(tg?money(tg):'—')+'</td><td>'+badge(rt,tg)+'</td></tr>';}
-  OLS.forEach(function(ol){var r=0,p=0,y=0,tg=0,rt=0;ITEMS.forEach(function(it){r+=sumr(model.data[ol].real[it],0,cut);if(sumr(model.data[ol].target[it],0,cut)>0)rt+=sumr(model.data[ol].real[it],0,cut);p+=sumr(model.data[ol].presu[it],0,cut);y+=sumr(model.data[ol].presu[it],0,11);tg+=sumr(model.data[ol].target[it],0,cut);});TP+=p;TR+=r;TY+=y;TT+=tg;TRT+=rt;b+=orow(ol,y,p,r,tg,false,rt);});
+  OLS.forEach(function(ol){var r=0,p=0,y=0,tg=0,rt=0;ITEMS.forEach(function(it){r+=sumr(model.data[ol].real[it],lo(),cut);if(sumr(model.data[ol].target[it],lo(),cut)>0)rt+=sumr(model.data[ol].real[it],lo(),cut);p+=sumr(model.data[ol].presu[it],lo(),cut);y+=sumr(model.data[ol].presu[it],0,11);tg+=sumr(model.data[ol].target[it],lo(),cut);});TP+=p;TR+=r;TY+=y;TT+=tg;TRT+=rt;b+=orow(ol,y,p,r,tg,false,rt);});
   b+=orow('Total',TY,TP,TR,TT,true,TRT)+'</tbody>';
   $('tblOL').innerHTML=head+b;
-  $('olTblNote').textContent='Enero a '+MESL[cut]+'. Se calcula siempre con los 4 operadores.';
+  $('olTblNote').textContent=plab()+'. Se calcula siempre con los 4 operadores.';
 }
 
 /* ---------- publicar ---------- */
