@@ -234,7 +234,7 @@ td.tg{line-height:1.25} td.tg small{display:block;margin-top:3px;font-size:10.5p
     <div class="sec-h"><h2 id="h-graf">Evolución</h2><p>Gasto real por ítem frente al presupuesto total de cada mes.</p></div>
     <div class="grid2">
       <div class="card"><p class="chart-t">Gasto real vs. presupuesto por mes</p><p class="chart-s" id="monthlySub"></p><div id="chMonthly"></div><div class="legend" id="lgMonthly"></div></div>
-      <div class="card"><p class="chart-t">Acumulado del año</p><p class="chart-s">Presupuesto y gasto real acumulados</p><div id="chCum"></div><div class="legend" id="lgCum"></div></div>
+      <div class="card"><p class="chart-t">Gasto total por mes</p><p class="chart-s">Gasto real de cada mes (en millones) frente al presupuesto del mes</p><div id="chCum"></div><div class="legend" id="lgCum"></div></div>
     </div>
     <div class="grid2b">
       <div class="card"><p class="chart-t">Ejecución por operador</p><p class="chart-s" id="olSub"></p><div id="olBars"></div></div>
@@ -265,7 +265,7 @@ td.tg{line-height:1.25} td.tg small{display:block;margin-top:3px;font-size:10.5p
 
   <footer class="page">
     <div class="cols">
-      <div style="opacity:.7">Versión del tablero: 30/10/2026 · v6</div>
+      <div style="opacity:.7">Versión del tablero: 30/10/2026 · v7</div>
       <div><b>Operadores:</b> RDV, TL, TOL y ST. Cualquier otro operador del archivo se omite.</div>
       <div><b>Mantenimiento</b> suma correctivo, preventivo y proactivo. <b>Otros</b> reúne documentación, administrativos, seguros y similares (hoy solo TOL).</div>
       <div><b>Datos:</b> se leen de <b>datos/datos_presupuesto.json</b>, generado desde los Excel de <b>base_excels</b> (hojas Presupuesto, Gastos y Targets). Tras publicar, presioná <b>Actualizar datos</b>.</div>
@@ -897,26 +897,30 @@ function chartMonthly(){
   $('monthlySub').textContent=mode==='mes'?'Mes seleccionado: '+MESL[cut]+' (marcado en dorado).':'Los meses posteriores a '+MESL[cut]+' se muestran sombreados (aún sin cierre).';
 }
 function chartCum(){
-  var W=420,H=340,pl=64,pr=14,pt=14,pb=30,ph=H-pt-pb,pw=W-pl-pr;
-  var pp=serTot('presu'),rl=serTot('real'),cp=[],cr=[],a=0,b=0;
-  for(var i=0;i<12;i++){a+=pp[i];b+=rl[i];cp.push(a);cr.push(b);}
-  var maxV=niceMax(Math.max(a,b)*1.05),step=pw/11;
-  function X(i){return pl+step*i;} function Y(v){return pt+ph-v/maxV*ph;}
-  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Presupuesto y gasto real acumulados">'+axis(maxV,W,H,pl,pr,pt,pb);
-  for(i=0;i<12;i+=1)if(i%2===0||i===11)s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle">'+MES[i]+'</text>';
-  s+='<polyline points="'+cp.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1);}).join(' ')+'" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-dasharray="7 4"/>';
-  var up=cr.slice(0,cut+1);
-  s+='<polyline points="'+up.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1);}).join(' ')+'" fill="none" stroke="var(--halo)" stroke-width="8"/><polyline points="'+up.map(function(v,i){return X(i).toFixed(1)+','+Y(v).toFixed(1);}).join(' ')+'" fill="none" stroke="#F6B800" stroke-width="4.5" stroke-linejoin="round"/>';
-  s+='<circle cx="'+X(cut)+'" cy="'+Y(cr[cut])+'" r="6" fill="#F6B800" stroke="var(--halo)" stroke-width="2.5"/>';
-  s+='<text x="'+Math.min(X(cut),W-pr-4)+'" y="'+(Y(cr[cut])-12)+'" text-anchor="end" style="font-weight:700;fill:var(--gold-t)">'+compact(cr[cut])+'</text>';
-  for(i=0;i<12;i++)s+='<rect class="hov" data-m="'+i+'" x="'+(X(i)-step/2)+'" y="'+pt+'" width="'+step+'" height="'+ph+'" fill="transparent"/>';
+  var W=420,H=340,pl=48,pr=10,pt=18,pb=30,ph=H-pt-pb,pw=W-pl-pr;
+  var pp=serTot('presu'),rl=serTot('real');
+  var maxV=niceMax(Math.max.apply(null,pp.concat(rl))*1.1),slot=pw/12,bw=slot*0.62;
+  function Y(v){return pt+ph-v/maxV*ph;}
+  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Gasto real total de cada mes frente al presupuesto del mes">'+axis(maxV,W,H,pl,pr,pt,pb);
+  for(var m=0;m<12;m++){
+    var x=pl+slot*m+(slot-bw)/2,has=m<=cut&&rl[m]>0,over=rl[m]>pp[m]&&pp[m]>0;
+    if(mode==='mes'&&m===cut)s+='<rect x="'+(pl+slot*m)+'" y="'+pt+'" width="'+slot+'" height="'+ph+'" fill="var(--shade)"/>';
+    if(has){
+      s+='<rect x="'+x.toFixed(1)+'" y="'+Y(rl[m]).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+(rl[m]/maxV*ph).toFixed(1)+'" rx="2" fill="'+(over?'var(--bad)':'#F6B800')+'"/>';
+      s+='<text x="'+(pl+slot*m+slot/2).toFixed(1)+'" y="'+(Y(rl[m])-4).toFixed(1)+'" text-anchor="middle" style="font-size:9px">'+nf0.format(Math.round(rl[m]/1e6))+'</text>';
+    }
+    if(pp[m]>0)s+='<line x1="'+(x-2).toFixed(1)+'" x2="'+(x+bw+2).toFixed(1)+'" y1="'+Y(pp[m]).toFixed(1)+'" y2="'+Y(pp[m]).toFixed(1)+'" stroke="var(--ink)" stroke-width="2.5"/>';
+    s+='<text x="'+(pl+slot*m+slot/2).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" style="font-size:9px'+(m>cut?';fill:var(--dim)':'')+'">'+MES[m].charAt(0)+'</text>';
+  }
+  for(m=0;m<12;m++)s+='<rect class="hov" data-m="'+m+'" x="'+(pl+slot*m)+'" y="'+pt+'" width="'+slot+'" height="'+ph+'" fill="transparent"/>';
   s+='</svg>';
   $('chCum').innerHTML=s;
   $('chCum').querySelectorAll('.hov').forEach(function(r){
-    r.onmousemove=function(e){var m=+r.dataset.m;showTip(e,'<b>Hasta '+MESL[m]+'</b><div><span>Presupuesto acum.</span><span>'+money(cp[m])+'</span></div>'+(m<=cut?'<div><span>Gasto real acum.</span><span>'+money(cr[m])+'</span></div>':''));};
+    r.onmousemove=function(e){var m=+r.dataset.m,d=rl[m]-pp[m];
+      showTip(e,'<b>'+MESL[m]+'</b><div><span>Gasto real</span><span>'+(m<=cut||rl[m]?money(rl[m]):'sin datos')+'</span></div><div><span>Presupuesto</span><span>'+money(pp[m])+'</span></div>'+(pp[m]&&rl[m]?'<div><span>Desvío</span><span>'+(d>0?'+':'−')+pct(Math.abs(d/pp[m]))+'</span></div>':''));};
     r.onmouseleave=hideTip;
   });
-  $('lgCum').innerHTML='<span><i class="ln" style="background:#F6B800;height:5px"></i>Gasto real</span><span><i class="ln" style="background:var(--ink)"></i>Presupuesto</span>';
+  $('lgCum').innerHTML='<span><i style="background:#F6B800"></i>Gasto real</span><span><i style="background:var(--bad)"></i>Por encima del ppto.</span><span><i class="ln" style="background:var(--ink)"></i>Presupuesto</span>';
 }
 function olBars(){
   var rows=OLS.map(function(ol){var r=0,p=0;ITEMS.forEach(function(it){r+=sumr(model.data[ol].real[it],lo(),cut);p+=sumr(model.data[ol].presu[it],lo(),cut);});return {ol:ol,r:r,p:p};});
